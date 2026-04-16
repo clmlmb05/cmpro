@@ -130,7 +130,7 @@ export default function App() {
         const pr = await fetch(SUPA_URL+"/rest/v1/cmpro_presence", { headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY} });
         const rows = await pr.json();
         const now = Date.now();
-        const active = (rows||[]).filter(r=>now-r.ts<10000).map(r=>r.id);
+        const active = (rows||[]).filter(r=>now-r.ts<30000).map(r=>r.id);
         setActiveUsers(active);
         const seen = {};
         (rows||[]).forEach(r => seen[r.id] = r.ts);
@@ -183,7 +183,7 @@ export default function App() {
       }
       await hb();
     };
-    hb(); syncRef.current = setInterval(poll, 3000);
+    hb(); syncRef.current = setInterval(poll, 5000);
     return () => clearInterval(syncRef.current);
   }, [user, pipeline.length, sessions.length]);
 
@@ -460,6 +460,9 @@ export default function App() {
       )}
 
       {/* Notifs */}
+      {(showNotifs||showProfile) && (
+        <div style={{position:"fixed",inset:0,zIndex:149}} onClick={()=>{setShowNotifs(false);setShowProfile(null);}}/>
+      )}
       {showNotifs && (
         <div style={{position:"fixed",inset:0,zIndex:150}} onClick={()=>setShowNotifs(false)}>
           <div style={{position:"absolute",top:M?68:56,right:M?16:24,width:M?"calc(100% - 32px)":"280px",background:"#FFFFFF",border:"1px solid #EDE9E3",borderRadius:16,boxShadow:"0 8px 32px rgba(28,25,23,.12)",overflow:"hidden"}} onClick={e=>e.stopPropagation()}>
@@ -499,7 +502,7 @@ export default function App() {
             const isToday=ts&&new Date(ts).toDateString()===new Date().toDateString();
             return (
               <div key={u} style={{position:"relative"}}>
-                <div onClick={()=>setShowProfile(showProfile===u?null:u)} style={{width:32,height:32,borderRadius:"50%",background:isActive?ACOLORS[u]:"#F0EDE8",border:isMe?"2px solid #C4B49A":"2px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:isActive?"0 2px 8px "+ACOLORS[u]+"33":"none",cursor:"pointer"}}>
+                <div onClick={e=>{e.stopPropagation();setShowProfile(showProfile===u?null:u);}} style={{width:32,height:32,borderRadius:"50%",background:isActive?ACOLORS[u]:"#F0EDE8",border:isMe?"2px solid #C4B49A":"2px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:isActive?"0 2px 8px "+ACOLORS[u]+"33":"none",cursor:"pointer"}}>
                   <span style={{fontSize:11,fontWeight:300,fontFamily:"'Cormorant Garamond',serif",color:isActive?"#FAF9F6":"#C4B49A",fontStyle:"italic"}}>{ini(u)}</span>
                 </div>
                 {isActive && <span style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:"#22C55E",border:"1.5px solid #FFFFFF",display:"block"}}/>}
