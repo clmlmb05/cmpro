@@ -675,6 +675,12 @@ export default function App() {
                         <div style={{fontWeight:500,fontSize:M?14:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:3}}>{p.name}</div>
                         <div style={{fontSize:11,color:"#A8A29E"}}>{p.sector}{p.city?" · "+p.city:""}</div>
                       </div>
+                      {p.assignedTo !== user && (
+                        <button onClick={()=>{lastWrite.current=Date.now();setProspects(pr=>pr.map(x=>x.id===p.id?{...x,assignedTo:user}:x));toast$("Prospect récupéré");}}
+                          style={{background:"#F9F8F6",border:"1px solid #EDE9E3",borderRadius:8,padding:"5px 10px",fontSize:11,color:"#78716C",flexShrink:0,whiteSpace:"nowrap"}}>
+                          Prendre
+                        </button>
+                      )}
                       {p.assignedTo && (
                         <div style={{width:26,height:26,borderRadius:"50%",background:ACOLORS[p.assignedTo],display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                           <span style={{fontSize:10,fontWeight:300,fontFamily:"'Cormorant Garamond',serif",color:"#FAF9F6",fontStyle:"italic"}}>{ini(p.assignedTo)}</span>
