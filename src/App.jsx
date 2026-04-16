@@ -63,6 +63,8 @@ export default function App() {
   const syncRef     = useRef(null);
   const bannerTimer = useRef(null);
   const bannerAnim  = useRef(null);
+  const seenPipeRef = useRef(new Set());
+  const seenSessRef = useRef(new Set());
 
   const today      = new Date();
   const pending    = prospects.filter(p => !p.called && (!p.assignedTo || p.assignedTo === user));
@@ -138,9 +140,6 @@ export default function App() {
         setLastSeen(seen);
       } catch {}
     };
-    const seenPipelineIds = new Set();
-    const seenSessionIds = new Set();
-
     const poll = async () => {
       const d = await loadData();
       if (!d) return;
@@ -148,19 +147,19 @@ export default function App() {
 
       // Always check for notifs — no guard
       newPl.forEach(e => {
-        const key=e.id+"-"+e.date;
-        if (!seenPipelineIds.has(key) && e.calledBy && e.calledBy!==user) {
+        const key=e.id+"-"+(e.calledAt||e.date)+"-"+e.result;
+        if (!seenPipeRef.current.has(key) && e.calledBy && e.calledBy!==user) {
           if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
           else if (e.result==="no_answer") addNotif(e.calledBy+" — pas de réponse chez "+e.name);
           else if (e.result==="refused") addNotif(e.calledBy+" — refus de "+e.name);
         }
-        seenPipelineIds.add(key);
+        seenPipeRef.current.add(key);
       });
       newSe.forEach(s => {
-        if (!seenSessionIds.has(s.id) && s.user && s.user!==user) {
+        if (!seenSessRef.current.has(s.id) && s.user && s.user!==user) {
           addNotif(s.user+" — session terminée · "+s.calls+" appels · "+s.rdv+" RDV");
         }
-        seenSessionIds.add(s.id);
+        seenSessRef.current.add(s.id);
       });
 
       // Only merge data if we haven't written recently
