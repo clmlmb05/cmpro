@@ -53,6 +53,7 @@ export default function App() {
   const [selDay, setSelDay]           = useState(null);
   const [expandedRdv, setExpandedRdv] = useState(null);
   const [showSessions, setShowSessions] = useState(false);
+  const [showReset, setShowReset]         = useState(false);
   const [loaded, setLoaded]           = useState(false);
   const [dragX, setDragX]             = useState(0);
   const [dragging, setDragging]       = useState(false);
@@ -144,15 +145,26 @@ export default function App() {
         if (d) {
           const newPl=d.pipeline||[]; const newSe=d.sessions||[];
           // Notifications for other user actions
-          if (newPl.length>pipeline.length) newPl.slice(0,newPl.length-pipeline.length).forEach(e => {
-            if (e.calledBy&&e.calledBy!==user) {
-              if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
-              else if (e.result==="no_answer") addNotif(e.calledBy+" — pas de réponse chez "+e.name);
-              else if (e.result==="refused") addNotif(e.calledBy+" — refus de "+e.name);
-            }
+          // Detect new pipeline entries by the other user using IDs
+          setPipeline(localPl => {
+            const localIds = new Set(localPl.map(p=>p.id+"-"+p.date));
+            newPl.forEach(e => {
+              if (!localIds.has(e.id+"-"+e.date) && e.calledBy && e.calledBy!==user) {
+                if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
+                else if (e.result==="no_answer") addNotif(e.calledBy+" — pas de réponse chez "+e.name);
+                else if (e.result==="refused") addNotif(e.calledBy+" — refus de "+e.name);
+              }
+            });
+            return localPl;
           });
-          if (newSe.length>sessions.length) newSe.slice(0,newSe.length-sessions.length).forEach(s => {
-            if (s.user&&s.user!==user) addNotif(s.user+" — session terminée · "+s.calls+" appels · "+s.rdv+" RDV");
+          setSessions(localSe => {
+            const localIds = new Set(localSe.map(s=>s.id));
+            newSe.forEach(s => {
+              if (!localIds.has(s.id) && s.user && s.user!==user) {
+                addNotif(s.user+" — session terminée · "+s.calls+" appels · "+s.rdv+" RDV");
+              }
+            });
+            return localSe;
           });
           // Smart merge: preserve local called state, merge pipelines by id
           setProspects(local => {
@@ -181,10 +193,13 @@ export default function App() {
           });
         }
       }
-      await hb();
     };
-    hb(); syncRef.current = setInterval(poll, 5000);
-    return () => clearInterval(syncRef.current);
+    // Heartbeat every 5s independently
+    hb();
+    const hbInterval = setInterval(hb, 5000);
+    // Data sync every 8s
+    syncRef.current = setInterval(poll, 8000);
+    return () => { clearInterval(syncRef.current); clearInterval(hbInterval); };
   }, [user, pipeline.length, sessions.length]);
 
   const startSession = () => {
@@ -421,6 +436,21 @@ export default function App() {
         </div>
       )}
 
+      {/* Reset confirm */}
+      {showReset && (
+        <div style={{position:"fixed",inset:0,background:"rgba(28,25,23,.4)",zIndex:200,display:"flex",alignItems:"flex-end",backdropFilter:"blur(8px)"}}>
+          <div className="su" style={{background:"#FAF9F6",borderRadius:"20px 20px 0 0",padding:"28px 24px 52px",width:"100%",borderTop:"2px solid #C4B49A"}}>
+            <div style={{width:32,height:3,background:"#E8E4DC",borderRadius:2,margin:"0 auto 22px"}}/>
+            <div style={{fontSize:18,fontWeight:300,fontFamily:"'Cormorant Garamond',serif",marginBottom:8,textAlign:"center"}}>Réinitialiser ?</div>
+            <div style={{fontSize:12,color:"#A8A29E",textAlign:"center",marginBottom:28,lineHeight:1.6}}>Toutes les données seront supprimées.<br/>Cette action est irréversible.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+              <button onClick={()=>setShowReset(false)} style={{background:"#F5F2EE",color:"#78716C",border:"none",borderRadius:12,padding:"14px",fontSize:14,fontWeight:500}}>Annuler</button>
+              <button onClick={()=>{setShowReset(false);resetAll();}} style={{background:"#1C1917",color:"#FAF9F6",border:"none",borderRadius:12,padding:"14px",fontSize:14,fontWeight:600}}>Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Win */}
       {winModal && (
         <div style={MODAL}>
@@ -492,7 +522,7 @@ export default function App() {
           <div style={{fontSize:M?18:20,fontWeight:300,fontFamily:"'Cormorant Garamond',serif",letterSpacing:-.5,lineHeight:1}}>CM<em style={{fontStyle:"italic",color:"#C4B49A"}}>Pro</em></div>
         </div>
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <button onClick={()=>setShowNotifs(n=>!n)} style={{background:"#F9F8F6",border:"1px solid #EDE9E3",borderRadius:8,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,position:"relative",color:"#78716C"}}>
+          <button onClick={e=>{e.stopPropagation();setShowNotifs(n=>!n);}} style={{background:"#F9F8F6",border:"1px solid #EDE9E3",borderRadius:8,width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,position:"relative",color:"#78716C"}}>
             ◎{notifs.length>0 && <span style={{position:"absolute",top:5,right:5,width:6,height:6,borderRadius:"50%",background:"#C4B49A",display:"block"}}/>}
           </button>
           {USERS.map(u => {
@@ -518,7 +548,7 @@ export default function App() {
               </div>
             );
           })}
-          <button onClick={resetAll} style={{background:"none",border:"none",fontSize:10,color:"#D6D3D1",padding:"6px 8px",letterSpacing:".06em",textTransform:"uppercase"}}>Reset</button>
+
         </div>
       </div>
 
@@ -901,6 +931,11 @@ export default function App() {
             )}
 
             {/* Historique */}
+            {/* Reset button */}
+            <button onClick={()=>setShowReset(true)} style={{width:"100%",background:"none",border:"1px solid #EDE9E3",borderRadius:12,padding:"12px",fontSize:12,color:"#D6D3D1",letterSpacing:".06em",textTransform:"uppercase",marginBottom:20}}>
+              Réinitialiser toutes les données
+            </button>
+
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
               <div style={{fontSize:9,color:"#A8A29E",fontWeight:600,letterSpacing:".1em",textTransform:"uppercase"}}>Historique · {sessions.length} session{sessions.length>1?"s":""}</div>
               <button onClick={()=>setShowSessions(s=>!s)} style={{background:"#F9F8F6",border:"1px solid #EDE9E3",borderRadius:8,padding:"5px 12px",fontSize:12,fontWeight:500,color:"#78716C"}}>
