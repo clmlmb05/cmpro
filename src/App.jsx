@@ -47,6 +47,8 @@ export default function App() {
   const [banner, setBanner]           = useState(null);
   const [bannerPct, setBannerPct]     = useState(100);
   const [activeUsers, setActiveUsers] = useState([]);
+  const [lastSeen, setLastSeen]         = useState({});
+  const [showProfile, setShowProfile]   = useState(null);
   const [weekStart, setWeekStart]     = useState(getMonday(new Date()));
   const [selDay, setSelDay]           = useState(null);
   const [expandedRdv, setExpandedRdv] = useState(null);
@@ -128,14 +130,20 @@ export default function App() {
         const pr = await fetch(SUPA_URL+"/rest/v1/cmpro_presence", { headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY} });
         const rows = await pr.json();
         const now = Date.now();
-        setActiveUsers((rows||[]).filter(r=>now-r.ts<10000).map(r=>r.id));
+        const active = (rows||[]).filter(r=>now-r.ts<10000).map(r=>r.id);
+        setActiveUsers(active);
+        const seen = {};
+        (rows||[]).forEach(r => seen[r.id] = r.ts);
+        setLastSeen(seen);
       } catch {}
     };
     const poll = async () => {
-      if (Date.now()-lastWrite.current > 5000) {
+      // Only sync if we haven't written recently (8s guard to avoid overwriting local changes)
+      if (Date.now()-lastWrite.current > 8000) {
         const d = await loadData();
         if (d) {
           const newPl=d.pipeline||[]; const newSe=d.sessions||[];
+          // Notifications for other user actions
           if (newPl.length>pipeline.length) newPl.slice(0,newPl.length-pipeline.length).forEach(e => {
             if (e.calledBy&&e.calledBy!==user) {
               if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
@@ -146,8 +154,31 @@ export default function App() {
           if (newSe.length>sessions.length) newSe.slice(0,newSe.length-sessions.length).forEach(s => {
             if (s.user&&s.user!==user) addNotif(s.user+" — session terminée · "+s.calls+" appels · "+s.rdv+" RDV");
           });
-          setProspects(local => { const lm={}; local.forEach(p=>lm[p.id]=p); return (d.prospects||[]).map(p=>lm[p.id]&&lm[p.id].called?lm[p.id]:p); });
-          setPipeline(newPl); setSessions(newSe); setWins(d.wins||[]);
+          // Smart merge: preserve local called state, merge pipelines by id
+          setProspects(local => {
+            const lm={}; local.forEach(p=>lm[p.id]=p);
+            const remote=d.prospects||[];
+            // Add remote prospects not in local, keep local state for existing
+            const merged=[...local];
+            remote.forEach(rp => { if(!lm[rp.id]) merged.push(rp); });
+            return merged;
+          });
+          // Merge pipeline: add entries from remote not in local
+          setPipeline(local => {
+            const ids=new Set(local.map(p=>p.id+"-"+p.date));
+            const remote=newPl.filter(p=>!ids.has(p.id+"-"+p.date));
+            return remote.length>0 ? [...remote,...local] : local;
+          });
+          setSessions(local => {
+            const ids=new Set(local.map(s=>s.id));
+            const remote=newSe.filter(s=>!ids.has(s.id));
+            return remote.length>0 ? [...remote,...local] : local;
+          });
+          setWins(local => {
+            const ids=new Set(local.map(w=>w.id));
+            const remote=(d.wins||[]).filter(w=>!ids.has(w.id));
+            return remote.length>0 ? [...remote,...local] : local;
+          });
         }
       }
       await hb();
@@ -463,12 +494,24 @@ export default function App() {
           </button>
           {USERS.map(u => {
             const isActive=activeUsers.includes(u); const isMe=u===user;
+            const ts=lastSeen[u];
+            const lastSeenStr=ts?new Date(ts).toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"}):"jamais";
+            const isToday=ts&&new Date(ts).toDateString()===new Date().toDateString();
             return (
-              <div key={u} style={{position:"relative"}} title={u}>
-                <div style={{width:32,height:32,borderRadius:"50%",background:isActive?ACOLORS[u]:"#F0EDE8",border:isMe?"2px solid #C4B49A":"2px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:isActive?"0 2px 8px "+ACOLORS[u]+"33":"none"}}>
+              <div key={u} style={{position:"relative"}}>
+                <div onClick={()=>setShowProfile(showProfile===u?null:u)} style={{width:32,height:32,borderRadius:"50%",background:isActive?ACOLORS[u]:"#F0EDE8",border:isMe?"2px solid #C4B49A":"2px solid transparent",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:isActive?"0 2px 8px "+ACOLORS[u]+"33":"none",cursor:"pointer"}}>
                   <span style={{fontSize:11,fontWeight:300,fontFamily:"'Cormorant Garamond',serif",color:isActive?"#FAF9F6":"#C4B49A",fontStyle:"italic"}}>{ini(u)}</span>
                 </div>
                 {isActive && <span style={{position:"absolute",bottom:0,right:0,width:8,height:8,borderRadius:"50%",background:"#22C55E",border:"1.5px solid #FFFFFF",display:"block"}}/>}
+                {showProfile===u && (
+                  <div style={{position:"absolute",top:42,right:0,background:"#FFFFFF",border:"1px solid #EDE9E3",borderRadius:12,padding:"12px 16px",boxShadow:"0 8px 24px rgba(28,25,23,.12)",zIndex:200,minWidth:160,whiteSpace:"nowrap"}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#1C1917",marginBottom:4}}>{u}</div>
+                    <div style={{fontSize:11,color:isActive?"#22C55E":"#A8A29E",marginBottom:6}}>{isActive?"En ligne":"Hors ligne"}</div>
+                    <div style={{fontSize:10,color:"#A8A29E",letterSpacing:".04em"}}>
+                      {ts?(isToday?"Vu à "+lastSeenStr:"Vu le "+new Date(ts).toLocaleDateString("fr-FR")+" à "+lastSeenStr):"Jamais connecté"}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
