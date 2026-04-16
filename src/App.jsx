@@ -84,12 +84,30 @@ export default function App() {
     bannerTimer.current = setTimeout(() => { setBanner(null); setBannerPct(100); }, dur);
   }, []);
 
-  const saveData = useCallback(async (p,pl,s,w) => {
-    try { await window.storage.set("crm_v2",JSON.stringify({prospects:p,pipeline:pl,sessions:s,wins:w||[]}),true); lastWrite.current=Date.now(); } catch {}
+  const SUPA_URL = "https://chhmnkpcejrcdxtdwlsb.supabase.co";
+  const SUPA_KEY = "sb_publishable_li-0nK8JLEBknJKh9XVXnQ_YJ9fSJXI";
+
+  const supaFetch = useCallback(async (method, body=null) => {
+    const opts = { method, headers: { "apikey": SUPA_KEY, "Authorization": "Bearer "+SUPA_KEY, "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(SUPA_URL+"/rest/v1/cmpro_data?id=eq.1", opts);
+    if (!r.ok) throw new Error(await r.text());
+    return r;
   }, []);
 
+  const saveData = useCallback(async (p,pl,s,w) => {
+    try {
+      await supaFetch("POST", {id:1, data:JSON.stringify({prospects:p,pipeline:pl,sessions:s,wins:w||[]}) });
+      lastWrite.current = Date.now();
+    } catch {}
+  }, [supaFetch]);
+
   const loadData = useCallback(async () => {
-    try { const r=await window.storage.get("crm_v2",true); if(r&&r.value) return JSON.parse(r.value); } catch {}
+    try {
+      const r = await fetch(SUPA_URL+"/rest/v1/cmpro_data?id=eq.1", { headers: { "apikey": SUPA_KEY, "Authorization": "Bearer "+SUPA_KEY } });
+      const arr = await r.json();
+      if (arr && arr[0] && arr[0].data) return JSON.parse(arr[0].data);
+    } catch {}
     return null;
   }, []);
 
@@ -106,10 +124,11 @@ export default function App() {
     if (!user) return;
     const hb = async () => {
       try {
-        await window.storage.set("presence:"+user, Date.now().toString(), true);
-        const now=Date.now(); const active=[];
-        for (const u of USERS) { try { const r=await window.storage.get("presence:"+u,true); if(r&&r.value&&(now-parseInt(r.value))<10000) active.push(u); } catch {} }
-        setActiveUsers(active);
+        await fetch(SUPA_URL+"/rest/v1/cmpro_presence?id=eq."+user, { method:"POST", headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates"}, body:JSON.stringify({id:user,ts:Date.now()}) });
+        const pr = await fetch(SUPA_URL+"/rest/v1/cmpro_presence", { headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY} });
+        const rows = await pr.json();
+        const now = Date.now();
+        setActiveUsers((rows||[]).filter(r=>now-r.ts<10000).map(r=>r.id));
       } catch {}
     };
     const poll = async () => {
@@ -211,7 +230,7 @@ export default function App() {
     setProspects([]); setPipeline([]); setSessions([]); setWins([]);
     setSessionStatus("idle"); setSessionQueue([]); setSessionIdx(0); setSessionLog([]);
     sessionStartRef.current=null; setScreen("home");
-    try { await window.storage.set("crm_v2",JSON.stringify({prospects:[],pipeline:[],sessions:[],wins:[]}),true); } catch {}
+    try { await supaFetch("POST", {id:1, data:JSON.stringify({prospects:[],pipeline:[],sessions:[],wins:[]})}); } catch {}
     toast$("Réinitialisé");
   };
 
@@ -893,4 +912,3 @@ export default function App() {
     </div>
   );
 }
-
