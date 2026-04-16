@@ -118,7 +118,15 @@ export default function App() {
 
   useEffect(() => {
     loadData().then(d => {
-      if (d) { setProspects(d.prospects||[]); setPipeline(d.pipeline||[]); setSessions(d.sessions||[]); setWins(d.wins||[]); }
+      if (d) {
+        setProspects(d.prospects||[]);
+        setPipeline(d.pipeline||[]);
+        setSessions(d.sessions||[]);
+        setWins(d.wins||[]);
+        // Pre-populate seen sets so existing entries don't spam notifs
+        (d.pipeline||[]).forEach(e => seenPipeRef.current.add(e.id+"-"+(e.calledAt||e.date)+"-"+e.result));
+        (d.sessions||[]).forEach(s => seenSessRef.current.add(s.id));
+      }
       setLoaded(true);
     });
   }, []);
@@ -269,6 +277,8 @@ export default function App() {
     setProspects([]); setPipeline([]); setSessions([]); setWins([]);
     setSessionStatus("idle"); setSessionQueue([]); setSessionIdx(0); setSessionLog([]);
     sessionStartRef.current=null; setScreen("home");
+    seenPipeRef.current = new Set();
+    seenSessRef.current = new Set();
     try { await supaFetch("POST", {id:1, data:JSON.stringify({prospects:[],pipeline:[],sessions:[],wins:[]})}); } catch {}
     toast$("Réinitialisé");
   };
