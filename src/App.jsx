@@ -65,6 +65,7 @@ export default function App() {
   const bannerAnim  = useRef(null);
   const seenPipeRef = useRef(new Set());
   const seenSessRef = useRef(new Set());
+  const loginTime   = useRef(Date.now());
 
   const today      = new Date();
   const pending    = prospects.filter(p => !p.called && (!p.assignedTo || p.assignedTo === user));
@@ -134,7 +135,7 @@ export default function App() {
   useEffect(() => { if (!loaded) return; saveData(prospects,pipeline,sessions,wins); }, [prospects,pipeline,sessions,wins,loaded]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !loaded) return;
     const hb = async () => {
       try {
         await fetch(SUPA_URL+"/rest/v1/cmpro_presence?id=eq."+user, { method:"POST", headers:{"apikey":SUPA_KEY,"Authorization":"Bearer "+SUPA_KEY,"Content-Type":"application/json","Prefer":"resolution=merge-duplicates"}, body:JSON.stringify({id:user,ts:Date.now()}) });
@@ -153,18 +154,21 @@ export default function App() {
       if (!d) return;
       const newPl=d.pipeline||[]; const newSe=d.sessions||[];
 
-      // Always check for notifs — no guard
+      // Check for notifs — seenPipeRef was pre-populated at load so only NEW entries trigger
       newPl.forEach(e => {
-        const key=e.id+"-"+(e.calledAt||e.date)+"-"+e.result;
-        if (!seenPipeRef.current.has(key) && e.calledBy && e.calledBy!==user) {
-          if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
-          else if (e.result==="no_answer") addNotif(e.calledBy+" — pas de réponse chez "+e.name);
-          else if (e.result==="refused") addNotif(e.calledBy+" — refus de "+e.name);
+        const key = e.id+"-"+(e.calledAt||e.date)+"-"+e.result;
+        if (!seenPipeRef.current.has(key)) {
+          if (e.calledBy && e.calledBy !== user) {
+            if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
+            else if (e.result==="no_answer") addNotif(e.calledBy+" — pas de réponse chez "+e.name);
+            else if (e.result==="refused") addNotif(e.calledBy+" — refus de "+e.name);
+          }
+          seenPipeRef.current.add(key);
         }
-        seenPipeRef.current.add(key);
       });
       newSe.forEach(s => {
-        if (!seenSessRef.current.has(s.id) && s.user && s.user!==user) {
+        const isNew = !seenSessRef.current.has(s.id);
+        if (isNew && s.user && s.user!==user) {
           addNotif(s.user+" — session terminée · "+s.calls+" appels · "+s.rdv+" RDV");
         }
         seenSessRef.current.add(s.id);
@@ -201,7 +205,7 @@ export default function App() {
     // Data sync every 8s
     syncRef.current = setInterval(poll, 8000);
     return () => { clearInterval(syncRef.current); clearInterval(hbInterval); };
-  }, [user, pipeline.length, sessions.length]);
+  }, [user, loaded]);
 
   const startSession = () => {
     const toCall = prospects.filter(p => !p.called && (!p.assignedTo || p.assignedTo === user));
