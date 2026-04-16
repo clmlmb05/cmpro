@@ -138,60 +138,54 @@ export default function App() {
         setLastSeen(seen);
       } catch {}
     };
+    const seenPipelineIds = new Set();
+    const seenSessionIds = new Set();
+
     const poll = async () => {
-      // Only sync if we haven't written recently (8s guard to avoid overwriting local changes)
-      if (Date.now()-lastWrite.current > 8000) {
-        const d = await loadData();
-        if (d) {
-          const newPl=d.pipeline||[]; const newSe=d.sessions||[];
-          // Notifications for other user actions
-          // Detect new pipeline entries by the other user using IDs
-          setPipeline(localPl => {
-            const localIds = new Set(localPl.map(p=>p.id+"-"+p.date));
-            newPl.forEach(e => {
-              if (!localIds.has(e.id+"-"+e.date) && e.calledBy && e.calledBy!==user) {
-                if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
-                else if (e.result==="no_answer") addNotif(e.calledBy+" — pas de réponse chez "+e.name);
-                else if (e.result==="refused") addNotif(e.calledBy+" — refus de "+e.name);
-              }
-            });
-            return localPl;
-          });
-          setSessions(localSe => {
-            const localIds = new Set(localSe.map(s=>s.id));
-            newSe.forEach(s => {
-              if (!localIds.has(s.id) && s.user && s.user!==user) {
-                addNotif(s.user+" — session terminée · "+s.calls+" appels · "+s.rdv+" RDV");
-              }
-            });
-            return localSe;
-          });
-          // Smart merge: preserve local called state, merge pipelines by id
-          setProspects(local => {
-            const lm={}; local.forEach(p=>lm[p.id]=p);
-            const remote=d.prospects||[];
-            // Add remote prospects not in local, keep local state for existing
-            const merged=[...local];
-            remote.forEach(rp => { if(!lm[rp.id]) merged.push(rp); });
-            return merged;
-          });
-          // Merge pipeline: add entries from remote not in local
-          setPipeline(local => {
-            const ids=new Set(local.map(p=>p.id+"-"+p.date));
-            const remote=newPl.filter(p=>!ids.has(p.id+"-"+p.date));
-            return remote.length>0 ? [...remote,...local] : local;
-          });
-          setSessions(local => {
-            const ids=new Set(local.map(s=>s.id));
-            const remote=newSe.filter(s=>!ids.has(s.id));
-            return remote.length>0 ? [...remote,...local] : local;
-          });
-          setWins(local => {
-            const ids=new Set(local.map(w=>w.id));
-            const remote=(d.wins||[]).filter(w=>!ids.has(w.id));
-            return remote.length>0 ? [...remote,...local] : local;
-          });
+      const d = await loadData();
+      if (!d) return;
+      const newPl=d.pipeline||[]; const newSe=d.sessions||[];
+
+      // Always check for notifs — no guard
+      newPl.forEach(e => {
+        const key=e.id+"-"+e.date;
+        if (!seenPipelineIds.has(key) && e.calledBy && e.calledBy!==user) {
+          if (e.result==="rdv") addNotif(e.calledBy+" — RDV avec "+e.name);
+          else if (e.result==="no_answer") addNotif(e.calledBy+" — pas de réponse chez "+e.name);
+          else if (e.result==="refused") addNotif(e.calledBy+" — refus de "+e.name);
         }
+        seenPipelineIds.add(key);
+      });
+      newSe.forEach(s => {
+        if (!seenSessionIds.has(s.id) && s.user && s.user!==user) {
+          addNotif(s.user+" — session terminée · "+s.calls+" appels · "+s.rdv+" RDV");
+        }
+        seenSessionIds.add(s.id);
+      });
+
+      // Only merge data if we haven't written recently
+      if (Date.now()-lastWrite.current > 8000) {
+        setProspects(local => {
+          const lm={}; local.forEach(p=>lm[p.id]=p);
+          const merged=[...local];
+          (d.prospects||[]).forEach(rp => { if(!lm[rp.id]) merged.push(rp); });
+          return merged;
+        });
+        setPipeline(local => {
+          const ids=new Set(local.map(p=>p.id+"-"+p.date));
+          const remote=newPl.filter(p=>!ids.has(p.id+"-"+p.date));
+          return remote.length>0 ? [...remote,...local] : local;
+        });
+        setSessions(local => {
+          const ids=new Set(local.map(s=>s.id));
+          const remote=newSe.filter(s=>!ids.has(s.id));
+          return remote.length>0 ? [...remote,...local] : local;
+        });
+        setWins(local => {
+          const ids=new Set(local.map(w=>w.id));
+          const remote=(d.wins||[]).filter(w=>!ids.has(w.id));
+          return remote.length>0 ? [...remote,...local] : local;
+        });
       }
     };
     // Heartbeat every 5s independently
